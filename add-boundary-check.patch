@@ -1,0 +1,71 @@
+diff -up simplejson-3.2.0/simplejson/_speedups.c.ms simplejson-3.2.0/simplejson/_speedups.c
+--- simplejson-3.2.0/simplejson/_speedups.c.ms	2015-05-18 11:40:07.477164704 +0200
++++ simplejson-3.2.0/simplejson/_speedups.c	2015-05-18 11:40:10.415183894 +0200
+@@ -2166,7 +2166,7 @@ scan_once_str(PyScannerObject *s, PyObje
+     Py_ssize_t length = PyString_GET_SIZE(pystr);
+     PyObject *rval = NULL;
+     int fallthrough = 0;
+-    if (idx >= length) {
++    if (idx < 0 || idx >= length) {
+ 	raise_errmsg(ERR_EXPECTING_VALUE, pystr, idx);
+         return NULL;
+     }
+@@ -2274,7 +2274,7 @@ scan_once_unicode(PyScannerObject *s, Py
+     Py_ssize_t length = PyUnicode_GetLength(pystr);
+     PyObject *rval = NULL;
+     int fallthrough = 0;
+-    if (idx >= length) {
++    if (idx < 0 || idx >= length) {
+ 	raise_errmsg(ERR_EXPECTING_VALUE, pystr, idx);
+         return NULL;
+     }
+diff --git a/simplejson/decoder.py b/simplejson/decoder.py
+index 38cb027..1a6c5d9 100644
+--- a/simplejson/decoder.py
++++ b/simplejson/decoder.py
+@@ -384,6 +384,10 @@ def raw_decode(self, s, idx=0, _w=WHITESPACE.match, _PY3=PY3):
+         have extraneous data at the end.
+ 
+         """
++        if idx < 0:
++            # Ensure that raw_decode bails on negative indexes, the regex
++            # would otherwise mask this behavior. #98
++            raise JSONDecodeError('Expecting value', s, idx)
+         if _PY3 and not isinstance(s, text_type):
+             raise TypeError("Input string must be text, not bytes")
+         return self.scan_once(s, idx=_w(s, idx).end())
+diff --git a/simplejson/scanner.py b/simplejson/scanner.py
+index b7918b3..5abed35 100644
+--- a/simplejson/scanner.py
++++ b/simplejson/scanner.py
+@@ -118,6 +118,11 @@ def _scan_once(string, idx):
+             raise JSONDecodeError(errmsg, string, idx)
+ 
+     def scan_once(string, idx):
++        if idx < 0:
++            # Ensure the same behavior as the C speedup, otherwise
++            # this would work for *some* negative string indices due
++            # to the behavior of __getitem__ for strings. #98
++            raise JSONDecodeError('Expecting value', string, idx)
+         try:
+             return _scan_once(string, idx)
+         finally:
+diff --git a/simplejson/tests/test_decode.py b/simplejson/tests/test_decode.py
+index ea5c90a..30b692a 100644
+--- a/simplejson/tests/test_decode.py
++++ b/simplejson/tests/test_decode.py
+@@ -86,3 +86,14 @@ def test_raw_decode(self):
+         self.assertEqual(
+             ({'a': {}}, 11),
+             cls().raw_decode(" \n{\"a\": {}}"))
++
++    def test_bounds_checking(self):
++        # https://github.com/simplejson/simplejson/issues/98
++        j = json.decoder.JSONDecoder()
++        for i in [4, 5, 6, -1, -2, -3, -4, -5, -6]:
++            self.assertRaises(ValueError, j.scan_once, '1234', i)
++            self.assertRaises(ValueError, j.raw_decode, '1234', i)
++        x, y = sorted(['128931233', '472389423'], key=id)
++        diff = id(x) - id(y)
++        self.assertRaises(ValueError, j.scan_once, y, diff)
++        self.assertRaises(ValueError, j.raw_decode, y, i)
