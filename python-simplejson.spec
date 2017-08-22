@@ -3,7 +3,7 @@
 
 Name:           %{?scl_prefix}python-simplejson
 
-Version:        3.11.0
+Version:        3.11.1
 Release:        1%{?dist}
 Summary:        Simple, fast, extensible JSON encoder/decoder for Python
 
@@ -73,6 +73,10 @@ rm -rf %{buildroot}
 %{python3_sitearch}/*
 
 %changelog
+* Tue Aug 08 2017 Charalampos Stratakis <cstratak@redhat.com> - 3.11.1-1
+- Update to 3.11.1
+Resolves: rhbz#1479375
+
 * Mon Jun 19 2017 Charalampos Stratakis <cstratak@redhat.com> - 3.11.0-1
 - Update to 3.11.0 for rh-python36
 
